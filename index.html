@@ -1,0 +1,139 @@
+
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>右手安培定則動畫（最終修正版）</title>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: sans-serif; }
+    #overlay {
+      position: absolute;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 1em;
+    }
+    label, select { font-size: 1em; margin-right: 1em; }
+  </style>
+</head>
+<body>
+<div id="overlay">
+  <label for="direction">電流方向：</label>
+  <select id="direction">
+    <option value="up">上</option>
+    <option value="down">下</option>
+    <option value="north">北</option>
+    <option value="south">南</option>
+    <option value="east">東</option>
+    <option value="west">西</option>
+  </select>
+</div>
+<canvas id="scene"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.157.0/examples/js/controls/OrbitControls.min.js"></script>
+<script>
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ canvas });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#f0f0f0');
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(6, 6, 6);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+scene.add(new THREE.DirectionalLight(0xffffff, 1).position.set(10, 10, 10));
+scene.add(new THREE.AmbientLight(0x404040));
+scene.add(new THREE.AxesHelper(3));
+
+const wireGroup = new THREE.Group();
+scene.add(wireGroup);
+
+const wire = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.05, 0.05, 5, 32),
+  new THREE.MeshStandardMaterial({ color: 'gray' })
+);
+wireGroup.add(wire);
+
+const currentArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, -2.5, 0), 5, 0xff0000);
+wireGroup.add(currentArrow);
+
+const directions = {
+  up:    [0, 1, 0],
+  down:  [0, -1, 0],
+  north: [0, 0, -1],
+  south: [0, 0, 1],
+  east:  [1, 0, 0],
+  west:  [-1, 0, 0],
+};
+
+let arrowSphere;
+let arrowPath = [];
+let pathIndex = 0;
+
+function updateMagneticLoop(currentVec) {
+  if (arrowSphere) wireGroup.remove(arrowSphere);
+  const axis = new THREE.Vector3(...currentVec).normalize();
+  const radius = 1.5;
+  const segments = 128;
+
+  const up = new THREE.Vector3(0, 1, 0);
+  if (axis.equals(up) || axis.equals(up.clone().negate())) up.set(1, 0, 0);
+  const baseX = new THREE.Vector3().crossVectors(axis, up).normalize();
+  const baseY = new THREE.Vector3().crossVectors(axis, baseX).normalize();
+
+  arrowPath = [];
+  for (let j = 0; j <= segments; j++) {
+    const angle = (j / segments) * 2 * Math.PI;
+    const point = new THREE.Vector3()
+      .addScaledVector(baseX, Math.cos(angle) * radius)
+      .addScaledVector(baseY, Math.sin(angle) * radius)
+      .addScaledVector(axis, 0);
+    arrowPath.push(point);
+  }
+
+  const sphere = new THREE.Mesh(
+    new THREE.SphereGeometry(0.1, 16, 16),
+    new THREE.MeshStandardMaterial({ color: 'blue' })
+  );
+  arrowSphere = sphere;
+  wireGroup.add(arrowSphere);
+  pathIndex = 0;
+}
+
+function updateScene() {
+  const selected = document.getElementById('direction').value;
+  const vec = directions[selected];
+  if (!vec) return;
+
+  const dirVec = new THREE.Vector3(...vec);
+  wireGroup.setRotationFromQuaternion(getQuaternionFromUpTo(vec));
+  currentArrow.setDirection(dirVec);
+  currentArrow.position.set(0, 0, 0).addScaledVector(dirVec, -2.5);
+  updateMagneticLoop(vec);
+}
+
+function getQuaternionFromUpTo(vec) {
+  const defaultDir = new THREE.Vector3(0, 1, 0);
+  const targetDir = new THREE.Vector3(...vec).normalize();
+  const quaternion = new THREE.Quaternion();
+  quaternion.setFromUnitVectors(defaultDir, targetDir);
+  return quaternion;
+}
+
+document.getElementById('direction').addEventListener('change', updateScene);
+updateScene();
+
+function animate() {
+  requestAnimationFrame(animate);
+  if (arrowSphere && arrowPath.length > 0) {
+    arrowSphere.position.copy(arrowPath[pathIndex]);
+    pathIndex = (pathIndex + 1) % arrowPath.length;
+  }
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
